@@ -3,12 +3,18 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import anthropic
+import os
+import requests
 
-# Load local dataset for demo
+# Load dataset from GitHub repo
 def load_demo_data():
-    file_path = "./data/clio_data.csv"  # Adjusted for GitHub-hosted file structure
-    df = pd.read_csv(file_path)
-    return df
+    url = "https://raw.githubusercontent.com/yourusername/Test_Project/main/clio_data.csv"
+    try:
+        df = pd.read_csv(url)
+        return df
+    except Exception as e:
+        st.error(f"Error loading data from GitHub: {str(e)}")
+        return pd.DataFrame()
 
 # Function to generate AI-powered dashboard insights using Claude AI
 def generate_ai_insights(df, category):
@@ -28,6 +34,8 @@ st.title("LegalTech AI Dashboard")
 # Load demo data
 st.subheader("Preview Your Data")
 df = load_demo_data()
+if df.empty:
+    st.stop()
 st.dataframe(df)
 
 if st.button("Confirm Data and Proceed"):
@@ -85,5 +93,6 @@ if st.button("Confirm Data and Proceed"):
     # Drag-and-Drop Widget Placeholder
     st.subheader("Drag & Drop to Customize")
     st.write("(This section will allow interactive widget placement in future updates)")
+
 
 
