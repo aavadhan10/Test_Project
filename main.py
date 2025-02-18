@@ -7,8 +7,9 @@ import os
 import requests
 
 # Load dataset from GitHub repo
+
 def load_demo_data():
-    url = "https://raw.githubusercontent.com/yourusername/Test_Project/main/clio_data.csv"
+    url = "https://raw.githubusercontent.com/aavadhan10/Test_Project/main/clio_data.csv"
     try:
         df = pd.read_csv(url)
         return df
