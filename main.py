@@ -86,3 +86,4 @@ if st.button("Confirm Data and Proceed"):
     st.subheader("Drag & Drop to Customize")
     st.write("(This section will allow interactive widget placement in future updates)")
 
+
