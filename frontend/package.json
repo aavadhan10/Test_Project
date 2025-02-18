@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "next": "latest",
+    "react": "latest",
+    "tailwindcss": "latest",
+    "shadcn-ui": "latest",
+    "recharts": "latest"
+  }
+}
