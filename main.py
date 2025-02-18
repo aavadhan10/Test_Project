@@ -1,99 +1,95 @@
 import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import anthropic
-import os
 import requests
+import json
+import os
 
-# Load dataset from GitHub repo
+# 1️⃣ Clio OAuth Credentials - Set these from your Clio Developer App
+CLIENT_ID = "YOUR_CLIENT_ID"
+CLIENT_SECRET = "YOUR_CLIENT_SECRET"
+REDIRECT_URI = "http://localhost:8501/callback"
+CLIO_AUTH_URL = "https://app.clio.com/oauth/authorize"
+CLIO_TOKEN_URL = "https://app.clio.com/oauth/token"
+CLIO_API_BASE = "https://app.clio.com/api/v4"
 
-def load_demo_data():
-    url = "https://raw.githubusercontent.com/aavadhan10/Test_Project/main/clio_data.csv"
-    try:
-        df = pd.read_csv(url)
-        return df
-    except Exception as e:
-        st.error(f"Error loading data from GitHub: {str(e)}")
-        return pd.DataFrame()
+# 2️⃣ Store user access tokens
+if "access_token" not in st.session_state:
+    st.session_state.access_token = None
 
-# Function to generate AI-powered dashboard insights using Claude AI
-def generate_ai_insights(df, category):
-    prompt = f"Analyze the following {category} performance data and provide insights:\n{df.to_string()}"
-    client = anthropic.Anthropic(api_key="your_claude_api_key")
-    response = client.completions.create(
-        model="claude-3.5-sonnet",
-        prompt=prompt,
-        max_tokens=500
-    )
-    return response["completion"].strip()
+# 3️⃣ OAuth Login Flow
+def clio_login():
+    """Redirects user to Clio login page"""
+    auth_url = f"{CLIO_AUTH_URL}?response_type=code&client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&scope=read_write"
+    st.markdown(f"[Login with Clio]({auth_url})")
 
-# Streamlit UI
-st.set_page_config(page_title="LegalTech Dashboard", layout="wide")
-st.title("LegalTech AI Dashboard")
+def fetch_access_token(auth_code):
+    """Exchange authorization code for an access token"""
+    payload = {
+        "grant_type": "authorization_code",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "code": auth_code,
+        "redirect_uri": REDIRECT_URI
+    }
+    response = requests.post(CLIO_TOKEN_URL, data=payload)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error("Failed to authenticate with Clio API.")
+        return None
 
-# Load demo data
-st.subheader("Preview Your Data")
-df = load_demo_data()
-if df.empty:
-    st.stop()
-st.dataframe(df)
+# 4️⃣ Fetch Clio Data
+def fetch_clio_data(endpoint):
+    """Fetch data from Clio API (Matters, Contacts, etc.)"""
+    headers = {"Authorization": f"Bearer {st.session_state.access_token}"}
+    response = requests.get(f"{CLIO_API_BASE}/{endpoint}", headers=headers)
+    return response.json() if response.status_code == 200 else None
 
-if st.button("Confirm Data and Proceed"):
-    # Sidebar customization options
-    st.sidebar.subheader("Customize Your Dashboard")
-    category = st.sidebar.selectbox("Choose Analysis Type:", ["Attorney Performance", "Firm Performance", "Billing Overview", "Client Insights", "Financial Analysis"])
-    metric = st.sidebar.selectbox("Select Metric:", df.columns)
-    chart_type = st.sidebar.selectbox("Choose Chart Type:", ["Line Chart", "Bar Chart", "Scatter Plot", "Pie Chart", "Heatmap", "Treemap"])
-    
-    # Dynamic Filtering
-    st.sidebar.subheader("Filters")
-    date_range = st.sidebar.date_input("Select Date Range", [df["date"].min(), df["date"].max()])
-    attorney_filter = st.sidebar.multiselect("Filter by Attorney", df["Attorney"].unique())
-    client_filter = st.sidebar.multiselect("Filter by Client", df["Client"].unique())
-    
-    filtered_df = df.copy()
-    if attorney_filter:
-        filtered_df = filtered_df[filtered_df["Attorney"].isin(attorney_filter)]
-    if client_filter:
-        filtered_df = filtered_df[filtered_df["Client"].isin(client_filter)]
-    if date_range:
-        filtered_df = filtered_df[(filtered_df["date"] >= date_range[0]) & (filtered_df["date"] <= date_range[1])]
-    
-    # Visualization Preview before Adding to Dashboard
-    if st.sidebar.button("Preview Visualization"):
-        st.subheader("Visualization Preview")
-        if chart_type == "Line Chart":
-            fig_preview = px.line(filtered_df, x="date", y=metric, title=f"{category} Trends Preview")
-        elif chart_type == "Bar Chart":
-            fig_preview = px.bar(filtered_df, x="date", y=metric, title=f"{category} Distribution Preview")
-        elif chart_type == "Pie Chart":
-            fig_preview = px.pie(filtered_df, names="Client", values=metric, title=f"{category} Breakdown Preview")
-        elif chart_type == "Heatmap":
-            fig_preview = px.density_heatmap(filtered_df, x="Attorney", y="Client", z=metric, title=f"{category} Heatmap")
-        elif chart_type == "Treemap":
-            fig_preview = px.treemap(filtered_df, path=["Client", "Attorney"], values=metric, title=f"{category} Treemap")
+# 5️⃣ Webhook Handling (Register Webhooks)
+def register_webhook():
+    """Registers a webhook with Clio to listen for updates"""
+    headers = {"Authorization": f"Bearer {st.session_state.access_token}", "Content-Type": "application/json"}
+    payload = {
+        "url": "https://your-webhook-endpoint.com",  # Change this to your actual webhook URL
+        "event_type": "matter.create"  # You can change this to listen for other events (e.g., billing, contacts)
+    }
+    response = requests.post(f"{CLIO_API_BASE}/webhooks", headers=headers, json=payload)
+    if response.status_code == 201:
+        st.success("Webhook registered successfully!")
+    else:
+        st.error("Failed to register webhook.")
+
+# 6️⃣ Streamlit UI
+st.title("Clio OAuth + Webhooks in Streamlit")
+
+# Handle OAuth Callback
+if "code" in st.query_params:
+    auth_code = st.query_params["code"]
+    token_response = fetch_access_token(auth_code)
+    if token_response:
+        st.session_state.access_token = token_response["access_token"]
+        st.success("✅ Successfully connected to Clio!")
+        st.experimental_rerun()
+
+# If user is logged in, show data options
+if st.session_state.access_token:
+    st.subheader("📊 Fetch Clio Data")
+
+    option = st.selectbox("Select Data to Fetch", ["Matters", "Contacts", "Billing"])
+    if st.button("Fetch Data"):
+        endpoint = option.lower()  # Convert selection to API endpoint name
+        data = fetch_clio_data(endpoint)
+        if data:
+            st.json(data)
         else:
-            fig_preview = px.scatter(filtered_df, x="date", y=metric, title=f"{category} Comparison Preview")
-        
-        st.plotly_chart(fig_preview)
-        if st.button("Add to Dashboard"):
-            st.session_state["confirmed_visualization"] = fig_preview
-    
-    # AI Insights
-    if st.sidebar.button("Generate AI Insights"):
-        insights = generate_ai_insights(filtered_df, category)
-        st.sidebar.markdown("### AI-Generated Insights")
-        st.sidebar.write(insights)
-    
-    # Custom Dashboard Section
-    st.subheader("Your Interactive Dashboard")
-    if "confirmed_visualization" in st.session_state:
-        st.plotly_chart(st.session_state["confirmed_visualization"])
-    
-    # Drag-and-Drop Widget Placeholder
-    st.subheader("Drag & Drop to Customize")
-    st.write("(This section will allow interactive widget placement in future updates)")
+            st.error("Failed to fetch data.")
 
+    st.subheader("🔔 Webhooks")
+    if st.button("Register Webhook"):
+        register_webhook()
+
+# If user is not logged in, show login button
+else:
+    st.warning("You must log in with Clio to access data.")
+    clio_login()
 
 
